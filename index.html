@@ -1,1 +1,1163 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ORACLE-7 — Vypni AI</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { width: 100%; height: 100%; overflow: hidden; touch-action: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+    const THREE = window.THREE;
+    const Tone = window.Tone;
 
+
+const MOVES = ["KÁMEN","NŮŽKY","PAPÍR"];
+const MI = {"KÁMEN":"⛰️","NŮŽKY":"✂️","PAPÍR":"📜"};
+const getRes = (p,a) => p===a?"draw":((p==="KÁMEN"&&a==="NŮŽKY")||(p==="NŮŽKY"&&a==="PAPÍR")||(p==="PAPÍR"&&a==="KÁMEN"))?"win":"lose";
+const aiPick = (hist,diff) => {
+  if(Math.random()>diff||hist.length<2) return MOVES[Math.floor(Math.random()*3)];
+  const c={"KÁMEN":"PAPÍR","NŮŽKY":"KÁMEN","PAPÍR":"NŮŽKY"};
+  if(Math.random()<0.5) return c[hist[hist.length-1]];
+  const cnt={"KÁMEN":0,"NŮŽKY":0,"PAPÍR":0}; hist.forEach(m=>cnt[m]++);
+  return c[Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0][0]];
+};
+
+let sR=false,SN={};
+const initA=()=>{if(sR)return;try{Tone.start();SN.w=new Tone.Synth({oscillator:{type:"triangle"},volume:-16}).toDestination();SN.l=new Tone.Synth({oscillator:{type:"sawtooth"},volume:-20}).toDestination();SN.h=new Tone.MembraneSynth({volume:-14}).toDestination();SN.c=new Tone.NoiseSynth({noise:{type:"white"},envelope:{attack:0.001,decay:0.03,sustain:0},volume:-28}).toDestination();SN.step=new Tone.NoiseSynth({noise:{type:"brown"},envelope:{attack:0.001,decay:0.015,sustain:0},volume:-32}).toDestination();sR=true}catch(e){}};
+const snd=(n,note)=>{if(!sR)return;try{if(n==="c"||n==="step")SN[n]?.triggerAttackRelease("32n");else SN[n]?.triggerAttackRelease(note||"C3","8n")}catch(e){}};
+
+// Elevation: z → y height
+function getElevation(z) {
+  if (z > -68) return 0;
+  if (z > -78) return ((z - (-68)) / (-78 - (-68))) * 4; // stairs 0→4
+  if (z > -100) return 4;
+  if (z > -110) return 4 + ((z - (-100)) / (-110 - (-100))) * 4; // stairs 4→8
+  return 8;
+}
+
+// 4 NPCs + ORACLE-7 boss. You MUST defeat each to proceed.
+const NPCS = [
+  { id:0, name:"STRÁŽ", sub:"Ulice", x:0, z:-12, diff:0.2, wins:1, color:0x2d8a4e,
+    taunt:"Stůj! Kdo jde?", winLine:"...zzz...", loseLine:"Neprojdeš!" },
+  { id:1, name:"VRÁTNÝ", sub:"Brána", x:0, z:-28, diff:0.3, wins:2, color:0xd4a55a,
+    taunt:"Průkaz prosím.", winLine:"...ok projdi...", loseLine:"Špatný průkaz!" },
+  { id:2, name:"SECURITY", sub:"Lobby", x:0, z:-58, diff:0.4, wins:2, color:0xdf4d4d,
+    taunt:"Na zem! TEĎKA!", winLine:"*padá*", loseLine:"Máme narušitele!" },
+  { id:3, name:"TECHNIK", sub:"Serverovna", x:0, z:-88, diff:0.5, wins:3, color:0xdf8a4d,
+    taunt:"Sem nesmíš!", winLine:"*jiskří*", loseLine:"Alarm aktivován!" },
+  { id:4, name:"ORACLE-7", sub:"Jádro AI", x:0, z:-120, diff:0.6, wins:4, color:0xff0050,
+    taunt:"Znám tě líp než ty sám.", winLine:"NEE̸E̷E̵...", loseLine:"Já JSEM budoucnost." },
+];
+
+// Pixel-art letter renderer — each letter is a 5x7 grid of blocks
+const PIXEL_FONT = {
+  C:[[1,1,1,1],[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,1,1,1]],
+  E:[[1,1,1,1],[1,0,0,0],[1,0,0,0],[1,1,1,0],[1,0,0,0],[1,0,0,0],[1,1,1,1]],
+  R:[[1,1,1,0],[1,0,0,1],[1,0,0,1],[1,1,1,0],[1,0,1,0],[1,0,0,1],[1,0,0,1]],
+  N:[[1,0,0,1],[1,1,0,1],[1,1,0,1],[1,0,1,1],[1,0,1,1],[1,0,0,1],[1,0,0,1]],
+  A:[[0,1,1,0],[1,0,0,1],[1,0,0,1],[1,1,1,1],[1,0,0,1],[1,0,0,1],[1,0,0,1]],
+  I:[[1,1,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[0,1,0],[1,1,1]],
+  7:[[1,1,1,1],[0,0,0,1],[0,0,1,0],[0,0,1,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]],
+  '-':[[0,0,0],[0,0,0],[0,0,0],[1,1,1],[0,0,0],[0,0,0],[0,0,0]],
+  ' ':[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]],
+};
+function addPixelText(scene, text, x, y, z, scale, color, rotY) {
+  const mat = new THREE.MeshStandardMaterial({color:color,emissive:color,emissiveIntensity:0.6,flatShading:true});
+  let offsetX = 0;
+  for(const ch of text) {
+    const grid = PIXEL_FONT[ch];
+    if(!grid) { offsetX += 3; continue; }
+    const cols = grid[0].length;
+    for(let row=0; row<grid.length; row++) {
+      for(let col=0; col<cols; col++) {
+        if(grid[row][col]) {
+          const block = new THREE.Mesh(new THREE.BoxGeometry(scale*0.9, scale*0.9, scale*0.3), mat);
+          const bx = (offsetX + col) * scale;
+          const by = (6 - row) * scale; // flip y
+          // Apply rotation
+          if(rotY) {
+            const cos = Math.cos(rotY), sin = Math.sin(rotY);
+            block.position.set(x + bx*cos, y + by, z + bx*sin);
+            block.rotation.y = rotY;
+          } else {
+            block.position.set(x + bx, y + by, z);
+          }
+          scene.add(block);
+        }
+      }
+    }
+    offsetX += cols + 1; // gap between letters
+  }
+}
+
+// ═══════════════════════════════════════
+// 3D WORLD
+// ═══════════════════════════════════════
+function buildWorld(canvas, w, h) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87CEEB);
+  scene.fog = new THREE.Fog(0x87CEEB, 25, 80);
+
+  const camera = new THREE.PerspectiveCamera(75, w/h, 0.1, 150);
+  camera.position.set(0, 1.8, 5);
+
+  const matConcrete = new THREE.MeshStandardMaterial({color:0x999999,flatShading:true});
+  const matStair = new THREE.MeshStandardMaterial({color:0x8a8a7a,flatShading:true});
+
+  // ── ZONE 1: STREET (z: 5 to -20) y=0 — Ostrava industrial vibes ──
+  // ONE single ground plane — thick box, nothing overlaps it
+  const masterGround = new THREE.Mesh(new THREE.BoxGeometry(80, 1, 150), new THREE.MeshStandardMaterial({color:0x4a6a3a,flatShading:true}));
+  masterGround.position.set(0, -0.5, -50); scene.add(masterGround);
+  // Road — raised well above ground (top at y=0.12)
+  const road = new THREE.Mesh(new THREE.BoxGeometry(5, 0.25, 35), new THREE.MeshStandardMaterial({color:0x3a3a3a,flatShading:true}));
+  road.position.set(0, 0.12, -5); scene.add(road);
+  // Road markings — on top of road (y=0.26)
+  for(let z=4; z>-20; z-=3) {
+    const mk = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 1.2), new THREE.MeshStandardMaterial({color:0xddcc44,flatShading:true}));
+    mk.position.set(0, 0.26, z); scene.add(mk);
+  }
+  // Trees
+  for(let z=2; z>-18; z-=8) {
+    for(let side of [-1,1]) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.18,2,5), new THREE.MeshStandardMaterial({color:0x6b4226,flatShading:true}));
+      trunk.position.set(side*4.5, 1, z); scene.add(trunk);
+      const leaf = new THREE.Mesh(new THREE.SphereGeometry(1.1,5,4), new THREE.MeshStandardMaterial({color:0x2d7a2d,flatShading:true}));
+      leaf.position.set(side*4.5, 2.8, z); leaf.castShadow=true; scene.add(leaf);
+    }
+  }
+  // Industrial buildings on sides (Ostrava style — brick, chimneys, pipes)
+  const indColors = [0x6a5544, 0x7a6655, 0x5a4a3a, 0x887766];
+  for(let side of [-1,1]) {
+    for(let i=0; i<4; i++) {
+      const bh=4+Math.random()*6;
+      const b = new THREE.Mesh(new THREE.BoxGeometry(3,bh,3+Math.random()*2), new THREE.MeshStandardMaterial({color:indColors[i%4],flatShading:true}));
+      b.position.set(side*(6+Math.random()*2), bh/2, 3-i*6); b.castShadow=true; scene.add(b);
+      // Chimney on some
+      if(i%2===0) {
+        const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.25,3,5), new THREE.MeshStandardMaterial({color:0x554444,flatShading:true}));
+        chimney.position.set(side*(6+Math.random()*2), bh+1.5, 3-i*6); scene.add(chimney);
+      }
+    }
+  }
+  // Industrial pipes along wall
+  for(let side of [-1,1]) {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,20,4), new THREE.MeshStandardMaterial({color:0x888877,flatShading:true}));
+    pipe.rotation.x = Math.PI/2; pipe.position.set(side*5.5, 3.5, -5); scene.add(pipe);
+  }
+  // Parked cars
+  for(let i=0; i<2; i++) {
+    const cx=(i%2===0?-1:1)*2, cz=2-i*10;
+    const cCol=[0xcc2222,0x2255cc][i%2];
+    const cb = new THREE.Mesh(new THREE.BoxGeometry(1.2,0.6,2.4), new THREE.MeshStandardMaterial({color:cCol,flatShading:true}));
+    cb.position.set(cx,0.5,cz); scene.add(cb);
+    const cc = new THREE.Mesh(new THREE.BoxGeometry(1,0.4,1.2), new THREE.MeshStandardMaterial({color:0x88bbdd,flatShading:true,transparent:true,opacity:0.7}));
+    cc.position.set(cx,0.95,cz); scene.add(cc);
+  }
+  // ── BILLBOARD "CERNA AI" — with pixel text ──
+  const bbPost = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,6,4), new THREE.MeshStandardMaterial({color:0x555555,flatShading:true}));
+  bbPost.position.set(7, 3, 0); scene.add(bbPost);
+  const bbBoard = new THREE.Mesh(new THREE.BoxGeometry(5,2.5,0.15), new THREE.MeshStandardMaterial({color:0x111111,flatShading:true}));
+  bbBoard.position.set(7, 6.5, 0); scene.add(bbBoard);
+  addPixelText(scene, "CERNA AI", 5.2, 5.8, 0.1, 0.12, 0xff0050, 0);
+  // Second billboard
+  const bbPost2 = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,6,4), new THREE.MeshStandardMaterial({color:0x555555,flatShading:true}));
+  bbPost2.position.set(-8, 3, -14); scene.add(bbPost2);
+  const bbBoard2 = new THREE.Mesh(new THREE.BoxGeometry(4.5,2.2,0.15), new THREE.MeshStandardMaterial({color:0x1a1a1a,flatShading:true}));
+  bbBoard2.position.set(-8, 6.5, -14); scene.add(bbBoard2);
+  addPixelText(scene, "CERNA AI", -9.8, 5.9, -13.85, 0.11, 0xff0050, 0);
+
+  // ── ZONE 2: WALL & GATE (z: -20 to -35) y=0 ──
+  // Dirt ground after wall — thick box, top at y=0.05
+  const wallGround = new THREE.Mesh(new THREE.BoxGeometry(20,0.6,16), new THREE.MeshStandardMaterial({color:0x555544,flatShading:true}));
+  wallGround.position.set(0, -0.25, -28); scene.add(wallGround);
+  // Wall with open gate
+  for(let side of [-1,1]) {
+    const ws = new THREE.Mesh(new THREE.BoxGeometry(8,7,1.5), new THREE.MeshStandardMaterial({color:0x6a7080,flatShading:true}));
+    ws.position.set(side*7, 3.5, -22); ws.castShadow=true; scene.add(ws);
+  }
+  const gateArch = new THREE.Mesh(new THREE.BoxGeometry(6,2,1.5), new THREE.MeshStandardMaterial({color:0x6a7080,flatShading:true}));
+  gateArch.position.set(0, 6, -22); scene.add(gateArch);
+  // CERNA AI text on gate
+  addPixelText(scene, "CERNA AI", -1.8, 5.5, -21.2, 0.08, 0xff0050, 0);
+  // Guard towers with industrial look
+  for(let side of [-1,1]) {
+    const tower = new THREE.Mesh(new THREE.BoxGeometry(2.5,10,2.5), new THREE.MeshStandardMaterial({color:0x5a6a7a,flatShading:true}));
+    tower.position.set(side*3.5, 5, -22); tower.castShadow=true; scene.add(tower);
+    // Rusty antenna on tower
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,3,3), new THREE.MeshStandardMaterial({color:0x884433,flatShading:true}));
+    ant.position.set(side*3.5, 11.5, -22); scene.add(ant);
+  }
+  // Gravel path after gate — thick, top at y=0.1
+  const gravel = new THREE.Mesh(new THREE.BoxGeometry(6,0.7,14), new THREE.MeshStandardMaterial({color:0x777766,flatShading:true}));
+  gravel.position.set(0, -0.25, -30); scene.add(gravel);
+
+  // ── ZONE 3: COURTYARD & BUILDING ENTRANCE (z: -35 to -50) y=0 ──
+  // Courtyard concrete — thick, top at y=0.1
+  const court = new THREE.Mesh(new THREE.BoxGeometry(16,0.7,18), matConcrete);
+  court.position.set(0, -0.25, -42); scene.add(court);
+  // Building facade with open doorway
+  for(let side of [-1,1]) {
+    const fw = new THREE.Mesh(new THREE.BoxGeometry(4,10,1.5), new THREE.MeshStandardMaterial({color:0x5a5a6a,flatShading:true}));
+    fw.position.set(side*5, 5, -50); scene.add(fw);
+  }
+  const ftop = new THREE.Mesh(new THREE.BoxGeometry(14,4,1.5), new THREE.MeshStandardMaterial({color:0x5a5a6a,flatShading:true}));
+  ftop.position.set(0, 12, -50); scene.add(ftop);
+  // CERNA AI sign on building facade
+  const signBg = new THREE.Mesh(new THREE.BoxGeometry(5,1.8,0.1), new THREE.MeshStandardMaterial({color:0x111111,flatShading:true}));
+  signBg.position.set(0, 10, -49.15); scene.add(signBg);
+  addPixelText(scene, "CERNA AI", -2.2, 9.3, -49.05, 0.14, 0xff0050, 0);
+  // ── COURTYARD DETAILS ──
+  // Guard booth (small box with window)
+  const booth = new THREE.Mesh(new THREE.BoxGeometry(2,2.5,2), new THREE.MeshStandardMaterial({color:0x5a6a7a,flatShading:true}));
+  booth.position.set(-5, 1.25, -38); scene.add(booth);
+  const boothWin = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.6,0.05), new THREE.MeshStandardMaterial({color:0x88bbdd,emissive:0x88bbdd,emissiveIntensity:0.1,flatShading:true}));
+  boothWin.position.set(-4, 1.8, -38); scene.add(boothWin);
+  const boothRoof = new THREE.Mesh(new THREE.BoxGeometry(2.4,0.15,2.4), new THREE.MeshStandardMaterial({color:0x444455,flatShading:true}));
+  boothRoof.position.set(-5, 2.55, -38); scene.add(boothRoof);
+  // Stacked crates
+  const crateM = new THREE.MeshStandardMaterial({color:0x7a6644,flatShading:true});
+  const crate1 = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), crateM);
+  crate1.position.set(5.5, 0.5, -36); scene.add(crate1);
+  const crate2 = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), crateM);
+  crate2.position.set(5.5, 0.5, -37.2); scene.add(crate2);
+  const crate3 = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), crateM);
+  crate3.position.set(5.5, 1.5, -36.6); crate3.rotation.y=0.3; scene.add(crate3);
+  // Barrels
+  const barrelM = new THREE.MeshStandardMaterial({color:0x555566,flatShading:true});
+  const barrel1 = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,1,6), barrelM);
+  barrel1.position.set(6, 0.5, -42); scene.add(barrel1);
+  const barrel2 = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.4,1,6), barrelM);
+  barrel2.position.set(6.6, 0.5, -41.3); scene.add(barrel2);
+  // Concrete barriers / bollards
+  for(let i=0; i<4; i++) {
+    const bollard = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.18,0.8,5), matConcrete);
+    bollard.position.set(-2+i*1.5, 0.4, -35); scene.add(bollard);
+  }
+  // Overhead cable / wire between facade and tower
+  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,12,3), new THREE.MeshStandardMaterial({color:0x333333,flatShading:true}));
+  cable.rotation.z = Math.PI/2; cable.position.set(0, 7, -42); scene.add(cable);
+  // Light pole in courtyard
+  const cpole = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,5,4), new THREE.MeshStandardMaterial({color:0x666666,flatShading:true}));
+  cpole.position.set(-3, 2.5, -44); scene.add(cpole);
+  const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.08,0.08), new THREE.MeshStandardMaterial({color:0x666666,flatShading:true}));
+  clamp.position.set(-2.6, 5, -44); scene.add(clamp);
+  const cbulb = new THREE.PointLight(0xffeedd,0.5,8); cbulb.position.set(-2.2, 5, -44); scene.add(cbulb);
+  // Fence sections on sides of courtyard
+  for(let side of [-1,1]) {
+    const fence = new THREE.Mesh(new THREE.BoxGeometry(0.08,1.8,10), new THREE.MeshStandardMaterial({color:0x666677,flatShading:true,transparent:true,opacity:0.5}));
+    fence.position.set(side*7.5, 0.9, -42); scene.add(fence);
+    // Fence posts
+    for(let fz=-37; fz>-48; fz-=3) {
+      const fp = new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,2,4), new THREE.MeshStandardMaterial({color:0x555555,flatShading:true}));
+      fp.position.set(side*7.5, 1, fz); scene.add(fp);
+    }
+  }
+  // Drain grate on ground
+  const grate = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.02,0.8), new THREE.MeshStandardMaterial({color:0x333333,flatShading:true}));
+  grate.position.set(2, 0.11, -43); scene.add(grate);
+  // Rusted pipe on building wall
+  const wallPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,10,4), new THREE.MeshStandardMaterial({color:0x884433,flatShading:true}));
+  wallPipe.position.set(3, 5, -49.2); scene.add(wallPipe);
+  // Warning stripes on entrance frame
+  for(let i=0; i<4; i++) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.15,0.05), new THREE.MeshStandardMaterial({color:i%2===0?0xddcc00:0x222222,flatShading:true}));
+    stripe.position.set(3, 1+i*0.5, -49.2); scene.add(stripe);
+  }
+
+  // ── ZONE 4: LOBBY (z: -50 to -68) y=0 ──
+  // Lobby floor — thick, top at y=0.1
+  const lobbyFloor = new THREE.Mesh(new THREE.BoxGeometry(10,0.7,18), new THREE.MeshStandardMaterial({color:0xccccbb,flatShading:true}));
+  lobbyFloor.position.set(0, -0.25, -59); scene.add(lobbyFloor);
+  for(let side of [-1,1]) {
+    const lw = new THREE.Mesh(new THREE.BoxGeometry(0.3,5,18), new THREE.MeshStandardMaterial({color:0x8a8a9a,flatShading:true}));
+    lw.position.set(side*5, 2.5, -59); scene.add(lw);
+  }
+  const ceil1 = new THREE.Mesh(new THREE.BoxGeometry(10,0.2,18), new THREE.MeshStandardMaterial({color:0xbbbbbb,flatShading:true}));
+  ceil1.position.set(0, 5, -59); scene.add(ceil1);
+  // Columns
+  for(let i=0; i<3; i++) for(let side of [-1,1]) {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.3,5,6), new THREE.MeshStandardMaterial({color:0x9a9aaa,flatShading:true}));
+    col.position.set(side*3.5, 2.5, -52-i*5); scene.add(col);
+  }
+  // Desk
+  const desk = new THREE.Mesh(new THREE.BoxGeometry(4,1,0.8), new THREE.MeshStandardMaterial({color:0x7a5533,flatShading:true}));
+  desk.position.set(0, 0.5, -56); scene.add(desk);
+  // Lobby lights
+  for(let z=-52; z>-67; z-=5) {
+    const ll = new THREE.PointLight(0xffeedd,0.8,8); ll.position.set(0,4.5,z); scene.add(ll);
+  }
+  // CERNA AI on lobby wall
+  addPixelText(scene, "CERNA AI", -2, 2.5, -51, 0.1, 0xff0050, 0);
+  // Open doorway to stairwell
+  for(let side of [-1,1]) {
+    const bw = new THREE.Mesh(new THREE.BoxGeometry(3,5,0.3), new THREE.MeshStandardMaterial({color:0x8a8a9a,flatShading:true}));
+    bw.position.set(side*3.5, 2.5, -68); scene.add(bw);
+  }
+  const bt = new THREE.Mesh(new THREE.BoxGeometry(3,1.5,0.3), new THREE.MeshStandardMaterial({color:0x8a8a9a,flatShading:true}));
+  bt.position.set(0, 4.25, -68); scene.add(bt);
+
+  // ── STAIRWELL 1 (z: -68 to -78) y: 0→4 ──
+  for(let i=0; i<10; i++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(3.5,0.25,1), matStair);
+    step.position.set(0, (i/10)*4+0.12, -69-i); scene.add(step);
+  }
+  for(let side of [-1,1]) {
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(0.3,10,11), matConcrete);
+    sw.position.set(side*2.5, 3, -73); scene.add(sw);
+  }
+  const sl1 = new THREE.PointLight(0xffffcc,0.5,8); sl1.position.set(0,6,-73); scene.add(sl1);
+
+  // ── ZONE 5: SERVER FLOOR (z: -78 to -100) y=4 ──
+  const y2 = 4;
+  // Server floor — thick box, top at y2+0.05
+  const srvFloor = new THREE.Mesh(new THREE.BoxGeometry(8,0.5,22), new THREE.MeshStandardMaterial({color:0x444444,flatShading:true}));
+  srvFloor.position.set(0, y2-0.2, -89); scene.add(srvFloor);
+  for(let side of [-1,1]) {
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(0.3,4.5,22), new THREE.MeshStandardMaterial({color:0x5a4a4a,flatShading:true}));
+    sw.position.set(side*4, y2+2.25, -89); scene.add(sw);
+  }
+  const ceil2 = new THREE.Mesh(new THREE.BoxGeometry(8,0.2,22), new THREE.MeshStandardMaterial({color:0x4a4a5a,flatShading:true}));
+  ceil2.position.set(0, y2+4.5, -89); scene.add(ceil2);
+  // Red lights
+  for(let z=-80; z>-99; z-=5) {
+    const rl = new THREE.PointLight(0xff2222,0.4,5); rl.position.set(0,y2+4,z);
+    rl.userData.blink=true; rl.userData.blinkSpeed=2; scene.add(rl);
+  }
+  // Server racks
+  for(let side of [-1,1]) for(let i=0; i<4; i++) {
+    const rack = new THREE.Mesh(new THREE.BoxGeometry(1,3,0.5), new THREE.MeshStandardMaterial({color:0x3a3a4a,flatShading:true}));
+    rack.position.set(side*3, y2+1.5, -80-i*5); scene.add(rack);
+    const led = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.06,0.06), new THREE.MeshStandardMaterial({color:0xdf8a4d,emissive:0xdf8a4d,emissiveIntensity:0.5,flatShading:true}));
+    led.position.set(side*3, y2+1.5, -80-i*5+0.3); led.userData.blink=true; led.userData.blinkSpeed=3+Math.random()*3; scene.add(led);
+  }
+  // Open doorway to stairwell 2
+  for(let side of [-1,1]) {
+    const dw = new THREE.Mesh(new THREE.BoxGeometry(2,4.5,0.3), new THREE.MeshStandardMaterial({color:0x5a4a4a,flatShading:true}));
+    dw.position.set(side*3, y2+2.25, -100); scene.add(dw);
+  }
+
+  // ── STAIRWELL 2 (z: -100 to -110) y: 4→8 ──
+  for(let i=0; i<10; i++) {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(3.5,0.25,1), matStair);
+    step.position.set(0, y2+(i/10)*4+0.12, -101-i); scene.add(step);
+  }
+  for(let side of [-1,1]) {
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(0.3,12,11), matConcrete);
+    sw.position.set(side*2.5, y2+4, -105); scene.add(sw);
+  }
+  const sl2 = new THREE.PointLight(0xffffcc,0.4,8); sl2.position.set(0,y2+8,-105); scene.add(sl2);
+
+  // ── ZONE 6: THE CORE (z: -110 to -130) y=8 ──
+  const y3 = 8;
+  // Floor — full coverage
+  const coreFloor = new THREE.Mesh(new THREE.CylinderGeometry(7,7,0.1,8), new THREE.MeshStandardMaterial({color:0x2a1a1a,flatShading:true}));
+  coreFloor.position.set(0, y3-0.2, -120); scene.add(coreFloor);
+  // Transition floor from stairwell to core — thick
+  const transFloor = new THREE.Mesh(new THREE.BoxGeometry(6,0.5,4), new THREE.MeshStandardMaterial({color:0x2a1a1a,flatShading:true}));
+  transFloor.position.set(0, y3-0.2, -112); scene.add(transFloor);
+  // Octagonal walls
+  for(let i=0; i<8; i++) {
+    const angle = (i/8)*Math.PI*2;
+    const w = new THREE.Mesh(new THREE.BoxGeometry(5,8,0.3), new THREE.MeshStandardMaterial({color:0x4a2a2a,flatShading:true}));
+    w.position.set(Math.cos(angle)*7, y3+4, -120+Math.sin(angle)*7);
+    w.rotation.y = angle; scene.add(w);
+    const rled = new THREE.Mesh(new THREE.BoxGeometry(3,0.08,0.08), new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.5,flatShading:true}));
+    rled.position.set(Math.cos(angle)*6.5, y3+3, -120+Math.sin(angle)*6.5);
+    rled.rotation.y = angle; rled.userData.blink=true; rled.userData.blinkSpeed=1.5+Math.random()*2; scene.add(rled);
+  }
+  // ── TABLE with Rock, Paper, Scissors props ──
+  const table = new THREE.Mesh(new THREE.BoxGeometry(2.5,0.8,1.2), new THREE.MeshStandardMaterial({color:0x5a4a3a,flatShading:true}));
+  table.position.set(0, y3+0.4, -117); scene.add(table);
+  // Rock (grey sphere)
+  const rock = new THREE.Mesh(new THREE.SphereGeometry(0.2,5,4), new THREE.MeshStandardMaterial({color:0x888888,flatShading:true}));
+  rock.position.set(-0.6, y3+1, -117); scene.add(rock);
+  // Scissors (two crossed cylinders)
+  const sc1 = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.5,4), new THREE.MeshStandardMaterial({color:0xcccccc,flatShading:true}));
+  sc1.rotation.z=Math.PI/6; sc1.position.set(0, y3+1, -117); scene.add(sc1);
+  const sc2 = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.5,4), new THREE.MeshStandardMaterial({color:0xcccccc,flatShading:true}));
+  sc2.rotation.z=-Math.PI/6; sc2.position.set(0.05, y3+1, -117); scene.add(sc2);
+  // Paper (flat white box)
+  const paper = new THREE.Mesh(new THREE.BoxGeometry(0.4,0.02,0.5), new THREE.MeshStandardMaterial({color:0xeeeeee,flatShading:true}));
+  paper.position.set(0.6, y3+0.9, -117); scene.add(paper);
+
+  // Core orb (floating above)
+  const coreOrb = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 8), new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.5,flatShading:true,transparent:true,opacity:0.8}));
+  coreOrb.position.set(0, y3+5, -122); coreOrb.userData.isCore=true; scene.add(coreOrb);
+  const inner = new THREE.Mesh(new THREE.SphereGeometry(0.4,4,4), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xff0050,emissiveIntensity:1,flatShading:true}));
+  inner.position.set(0, y3+5, -122); inner.userData.isCore=true; scene.add(inner);
+  // Energy beams
+  for(let i=0; i<4; i++) {
+    const a2 = (i/4)*Math.PI*2;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,5,4), new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.5,flatShading:true,transparent:true,opacity:0.3}));
+    beam.position.set(Math.cos(a2)*3, y3+5, -122+Math.sin(a2)*3);
+    beam.rotation.z=Math.PI/2; beam.rotation.y=-a2; beam.userData.isCore=true; scene.add(beam);
+  }
+  const coreLight = new THREE.PointLight(0xff0050,2.5,20); coreLight.position.set(0,y3+6,-122); coreLight.userData.isCore=true; scene.add(coreLight);
+
+  // ── DISTANT SKYLINE — fill the blue void ──
+  // Background buildings (far away, large, dim)
+  const skyColors = [0x556677, 0x4a5a6a, 0x5a6a7a, 0x667788, 0x4a5566];
+  for(let i=0; i<12; i++) {
+    const bh = 6+Math.random()*14;
+    const bx = -30 + i*5 + Math.random()*3;
+    const bz = 10 + Math.random()*8;
+    const skyB = new THREE.Mesh(new THREE.BoxGeometry(3+Math.random()*2, bh, 2+Math.random()*2), new THREE.MeshStandardMaterial({color:skyColors[i%5],flatShading:true}));
+    skyB.position.set(bx, bh/2, bz); scene.add(skyB);
+  }
+  // Behind player — more skyline
+  for(let i=0; i<8; i++) {
+    const bh = 4+Math.random()*10;
+    const bx = -20 + i*6;
+    const bz = 12 + Math.random()*5;
+    const skyB2 = new THREE.Mesh(new THREE.BoxGeometry(3+Math.random()*3, bh, 3), new THREE.MeshStandardMaterial({color:skyColors[i%5],flatShading:true}));
+    skyB2.position.set(bx, bh/2, bz); scene.add(skyB2);
+  }
+  // Distant hills (low wide boxes)
+  for(let i=0; i<5; i++) {
+    const hill = new THREE.Mesh(new THREE.BoxGeometry(15+Math.random()*10, 3+Math.random()*4, 6), new THREE.MeshStandardMaterial({color:0x4a6a4a,flatShading:true}));
+    hill.position.set(-25+i*12, 1.5, 20+Math.random()*10); scene.add(hill);
+  }
+  // Smokestacks in distance (Ostrava vibes)
+  for(let i=0; i<3; i++) {
+    const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.5,12,5), new THREE.MeshStandardMaterial({color:0x665544,flatShading:true}));
+    stack.position.set(-15+i*15, 6, 15+Math.random()*5); scene.add(stack);
+  }
+  // Distant CERNA AI billboard (far)
+  const farBB = new THREE.Mesh(new THREE.BoxGeometry(6,2.5,0.2), new THREE.MeshStandardMaterial({color:0x111111,flatShading:true}));
+  farBB.position.set(20, 10, 18); scene.add(farBB);
+  const farBBt = new THREE.Mesh(new THREE.BoxGeometry(5,1.5,0.1), new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.3,flatShading:true}));
+  farBBt.position.set(20, 10, 18.15); scene.add(farBBt);
+
+  // ── GLOBAL LIGHTING ──
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const sun = new THREE.DirectionalLight(0xffeedd, 1.1);
+  sun.position.set(8, 25, 10); sun.castShadow=true;
+  sun.shadow.mapSize.width=512; sun.shadow.mapSize.height=512;
+  sun.shadow.camera.near=0.1; sun.shadow.camera.far=60;
+  sun.shadow.camera.left=-20; sun.shadow.camera.right=20;
+  sun.shadow.camera.top=20; sun.shadow.camera.bottom=-20;
+  scene.add(sun);
+
+  return { renderer, scene, camera };
+}
+
+// ═══════════════════════════════════════
+// NPC DEFEAT POSES
+// ═══════════════════════════════════════
+function applyDefeatPose(group, id) {
+  switch(id) {
+    case 0: group.rotation.x = Math.PI/2; group.position.y -= 0.8; break; // falls asleep
+    case 1: group.position.y -= 0.7; break; // sits down
+    case 2: group.rotation.x = Math.PI/2; group.position.y -= 0.9; group.rotation.z=0.2; break; // face down
+    case 3: group.rotation.z = Math.PI/5; group.position.x += 0.5; group.position.y -= 0.3; break; // sparks
+    case 4: group.rotation.x = 0.3; group.rotation.z = 0.15; break; // terminal powered off, tilted
+  }
+}
+
+function buildNPCMesh(npc, scene, isDefeated) {
+  const group = new THREE.Group();
+  const c = new THREE.Color(npc.color);
+  const darker = c.clone().multiplyScalar(0.5);
+
+  if(npc.id === 4) {
+    // ═══ ORACLE-7: AI TERMINAL with eyes ═══
+    // Base/pedestal
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1,1.2,0.5,6), new THREE.MeshStandardMaterial({color:0x2a2a3a,flatShading:true}));
+    base.position.y = 0.25; group.add(base);
+    // Terminal body (tall monolith)
+    const terminal = new THREE.Mesh(new THREE.BoxGeometry(1.5,2.5,0.8), new THREE.MeshStandardMaterial({color:0x1a1a2a,flatShading:true}));
+    terminal.position.y = 1.75; group.add(terminal);
+    // Screen face
+    const screen = new THREE.Mesh(new THREE.BoxGeometry(1.2,1.5,0.05), new THREE.MeshStandardMaterial({color:0x0a0a1a,emissive:0xff0050,emissiveIntensity:0.15,flatShading:true}));
+    screen.position.set(0, 2, 0.43); group.add(screen);
+    // AI EYES — two glowing circles that animate
+    for(let side of [-1,1]) {
+      const eyeOuter = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.25,0.06), new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.9,flatShading:true}));
+      eyeOuter.position.set(side*0.25, 2.2, 0.46);
+      eyeOuter.userData.isAiEye = true;
+      eyeOuter.userData.eyeSide = side;
+      group.add(eyeOuter);
+      // Pupil
+      const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.1,0.06), new THREE.MeshStandardMaterial({color:0xffffff,emissive:0xffffff,emissiveIntensity:1,flatShading:true}));
+      pupil.position.set(side*0.25, 2.2, 0.49);
+      pupil.userData.isAiPupil = true;
+      pupil.userData.eyeSide = side;
+      group.add(pupil);
+    }
+    // Red "mouth" line
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.06,0.05), new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.5,flatShading:true}));
+    mouth.position.set(0, 1.6, 0.46); mouth.userData.blink=true; mouth.userData.blinkSpeed=3; group.add(mouth);
+    // Side panels
+    for(let side of [-1,1]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.1,1.8,0.6), new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.2,flatShading:true}));
+      panel.position.set(side*0.85, 1.8, 0); group.add(panel);
+    }
+    // Antenna
+    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.8,4), new THREE.MeshStandardMaterial({color:0x888888,flatShading:true}));
+    ant.position.set(0, 3.4, 0); group.add(ant);
+    const antTip = new THREE.Mesh(new THREE.SphereGeometry(0.08,4,4), new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.8,flatShading:true}));
+    antTip.position.set(0, 3.9, 0); antTip.userData.blink=true; antTip.userData.blinkSpeed=2; group.add(antTip);
+    // Glow
+    const glow = new THREE.PointLight(0xff0050, 1.2, 6); glow.position.set(0,2.5,0.5); group.add(glow);
+    // Exclamation mark
+    const exMat = new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.8,flatShading:true});
+    const ex = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.6,0.15), exMat); ex.position.y=4.2; ex.userData.isExcl=true; group.add(ex);
+    const dot = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.15,0.15), exMat.clone()); dot.position.y=3.8; dot.userData.isExcl=true; group.add(dot);
+  } else {
+    // ═══ REGULAR HUMANOID NPC ═══
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.7,1.2,0.5), new THREE.MeshStandardMaterial({color:darker,flatShading:true}));
+    body.position.y=1.2; group.add(body);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), new THREE.MeshStandardMaterial({color:c,flatShading:true}));
+    head.position.y=2.1; group.add(head);
+    for(let side of [-1,1]) {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.08,0.06), new THREE.MeshStandardMaterial({color:npc.color,emissive:npc.color,emissiveIntensity:0.8,flatShading:true}));
+      eye.position.set(side*0.12, 2.15, 0.28); group.add(eye);
+    }
+    for(let side of [-1,1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.6,0.3), new THREE.MeshStandardMaterial({color:0x1a1a1a,flatShading:true}));
+      leg.position.set(side*0.2, 0.3, 0); leg.userData.isLeg=true; leg.userData.side=side; group.add(leg);
+    }
+    for(let side of [-1,1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.8,0.25), new THREE.MeshStandardMaterial({color:darker,flatShading:true}));
+      arm.position.set(side*0.55, 1.2, 0); group.add(arm);
+    }
+    const glow = new THREE.PointLight(npc.color, 0.6, 4); glow.position.set(0,2,0); group.add(glow);
+    const exMat = new THREE.MeshStandardMaterial({color:0xff0050,emissive:0xff0050,emissiveIntensity:0.8,flatShading:true});
+    const ex = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.5,0.12), exMat); ex.position.y=3; ex.userData.isExcl=true; group.add(ex);
+    const dot = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.12), exMat.clone()); dot.position.y=2.65; dot.userData.isExcl=true; group.add(dot);
+  }
+
+  const elev = getElevation(npc.z);
+  group.position.set(npc.x, elev, npc.z);
+  group.userData.npcId = npc.id;
+
+  if (isDefeated) {
+    group.traverse(ch => {
+      if(ch.userData.isExcl) ch.visible = false;
+      if(ch.isMesh && !ch.userData.isExcl) {
+        ch.material = ch.material.clone();
+        ch.material.color.set(0x333333);
+        if(ch.material.emissive) ch.material.emissive.set(0x111111);
+        ch.material.emissiveIntensity = 0.02;
+      }
+      if(ch.isLight) ch.intensity = 0.05;
+    });
+    applyDefeatPose(group, npc.id);
+  }
+
+  scene.add(group);
+  return group;
+}
+
+// ═══════════════════════════════════════
+// MAIN GAME
+// ═══════════════════════════════════════
+function Game() {
+  const containerRef = useRef(null);
+  const canvasRef = useRef(null);
+  const frameRef = useRef(null);
+  const gameRef = useRef({
+    renderer:null, scene:null, camera:null,
+    npcMeshes:[], npcData:[],
+    playerPos:{x:0,z:5},
+    keys:{}, walkTime:0, camAngle:0, nearNpc:null
+  });
+
+  const [phase, setPhase] = useState("title");
+  const [fightNpc, setFightNpc] = useState(null);
+  const [fightHp, setFightHp] = useState(0);
+  const [pHp, setPHp] = useState(8);
+  const [pMove, setPMove] = useState(null);
+  const [aMove, setAMove] = useState(null);
+  const [fRes, setFRes] = useState(null);
+  const [anim, setAnim] = useState(false);
+  const [reveal, setReveal] = useState(false);
+  const [hist, setHist] = useState([]);
+  const [nearInfo, setNearInfo] = useState(null);
+  const [bubble, setBubble] = useState(null);
+  const [defeated, setDefeated] = useState(new Set());
+  const [flash, setFlash] = useState(null);
+  const [zoneLabel, setZoneLabel] = useState("");
+  const [shutdownAnim, setShutdownAnim] = useState(false);
+
+  const getZoneLabel = (z) => {
+    if(z > -20) return "Ulice";
+    if(z > -35) return "Vnější zeď";
+    if(z > -50) return "Nádvoří";
+    if(z > -68) return "Lobby";
+    if(z > -78) return "Schodiště ↑";
+    if(z > -100) return "Serverovna";
+    if(z > -110) return "Schodiště ↑";
+    return "Jádro ORACLE-7";
+  };
+
+  useEffect(() => {
+    if (phase !== "explore" && phase !== "fight") return;
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+    const w = container.clientWidth, h = container.clientHeight;
+
+    const { renderer, scene, camera } = buildWorld(canvas, w, h);
+    const g = gameRef.current;
+    g.renderer = renderer; g.scene = scene; g.camera = camera;
+
+    g.npcData = NPCS.map(n => ({...n, defeated: defeated.has(n.id)}));
+    g.npcMeshes = g.npcData.map(n => buildNPCMesh(n, scene, n.defeated));
+
+    let time = 0;
+    const animate = () => {
+      time += 0.016;
+      frameRef.current = requestAnimationFrame(animate);
+
+      const speed = 0.1;
+      const turnSpeed = 0.04;
+      let moved = false;
+
+      // Keyboard + touch joystick input
+      const jx = g.joystickX || 0, jy = g.joystickY || 0;
+      if(g.keys["ArrowLeft"]||g.keys["a"]||g.keys["A"]||jx<-0.3) { g.camAngle -= turnSpeed * (jx<-0.3 ? Math.abs(jx) : 1); }
+      if(g.keys["ArrowRight"]||g.keys["d"]||g.keys["D"]||jx>0.3) { g.camAngle += turnSpeed * (jx>0.3 ? jx : 1); }
+      const dirX = Math.sin(g.camAngle);
+      const dirZ = -Math.cos(g.camAngle);
+      if(g.keys["ArrowUp"]||g.keys["w"]||g.keys["W"]||jy<-0.3) { const s=jy<-0.3?Math.abs(jy):1; g.playerPos.x += dirX*speed*s; g.playerPos.z += dirZ*speed*s; moved = true; }
+      if(g.keys["ArrowDown"]||g.keys["s"]||g.keys["S"]||jy>0.3) { const s=jy>0.3?jy*0.6:0.6; g.playerPos.x -= dirX*speed*s; g.playerPos.z -= dirZ*speed*s; moved = true; }
+
+      g.playerPos.z = Math.max(-130, Math.min(8, g.playerPos.z));
+
+      // ── BLOCKING: can't pass undefeated NPC ──
+      // Find the first undefeated NPC (sorted by z, highest first = closest)
+      const sortedNpcs = [...g.npcData].filter(n => !n.defeated).sort((a,b) => b.z - a.z);
+      for(const npc of sortedNpcs) {
+        // Block: player can't go more than 2 units past undefeated NPC
+        if(g.playerPos.z < npc.z - 2) {
+          g.playerPos.z = npc.z - 2;
+        }
+      }
+
+      // Corridor X limits
+      const pz = g.playerPos.z;
+      let xMin=-2, xMax=2;
+      if(pz > -20) { xMin=-2; xMax=2; }
+      else if(pz > -24) { xMin=-1.5; xMax=1.5; } // gate
+      else if(pz > -35) { xMin=-2.5; xMax=2.5; }
+      else if(pz > -50) { xMin=-6; xMax=6; } // courtyard
+      else if(pz > -52) { xMin=-2.5; xMax=2.5; } // entrance
+      else if(pz > -68) { xMin=-4; xMax=4; } // lobby
+      else if(pz > -78) { xMin=-1.8; xMax=1.8; } // stairwell
+      else if(pz > -100) { xMin=-3; xMax=3; } // server
+      else if(pz > -110) { xMin=-1.8; xMax=1.8; } // stairwell 2
+      else { xMin=-5; xMax=5; } // core
+      g.playerPos.x = Math.max(xMin, Math.min(xMax, g.playerPos.x));
+
+      // NPC collision
+      for(const npc of g.npcData) {
+        if(npc.defeated) continue;
+        const dx=g.playerPos.x-npc.x, dz=g.playerPos.z-npc.z;
+        const dist=Math.sqrt(dx*dx+dz*dz);
+        if(dist<1.5) {
+          const nx=dx/(dist||1), nz=dz/(dist||1);
+          g.playerPos.x=npc.x+nx*1.5; g.playerPos.z=npc.z+nz*1.5;
+        }
+      }
+
+      const playerElev = getElevation(g.playerPos.z);
+
+      // Walk sound
+      if(moved) {
+        g.walkTime += 0.15;
+        if(Math.floor(g.walkTime*2)%4===0) snd("step");
+      }
+
+      // First-person camera — smooth rotation
+      const eyeH = playerElev + 1.8;
+      camera.position.x += (g.playerPos.x - camera.position.x) * 0.2;
+      camera.position.y += (eyeH - camera.position.y) * 0.2;
+      camera.position.z += (g.playerPos.z - camera.position.z) * 0.2;
+      const lookX = g.playerPos.x + Math.sin(g.camAngle) * 8;
+      const lookZ = g.playerPos.z - Math.cos(g.camAngle) * 8;
+      camera.lookAt(lookX, eyeH - 0.3, lookZ);
+
+      // Indoor fog
+      if(pz < -50) { scene.fog.near=12; scene.fog.far=35; }
+      else { scene.fog.near=25; scene.fog.far=80; }
+
+      // Nearest NPC — store in gameRef so keydown can access it
+      g.nearNpc = null;
+      let nearDist=Infinity;
+      for(const npc of g.npcData) {
+        const dx2=g.playerPos.x-npc.x, dz2=g.playerPos.z-npc.z;
+        const d=Math.sqrt(dx2*dx2+dz2*dz2);
+        if(d<3.5 && d<nearDist && !npc.defeated) { g.nearNpc=npc; nearDist=d; }
+      }
+
+      // NPC idle animations — bob and sway
+      g.npcMeshes.forEach((mesh, idx) => {
+        if(!g.npcData[idx].defeated) {
+          const npcTime = time + idx * 1.5; // offset each NPC
+          mesh.position.y = getElevation(g.npcData[idx].z) + Math.sin(npcTime * 1.5) * 0.05;
+          mesh.rotation.y = Math.sin(npcTime * 0.7) * 0.15;
+        }
+      });
+
+      // Animations
+      scene.traverse(obj => {
+        if(obj.userData.blink) {
+          const b=Math.sin(time*obj.userData.blinkSpeed)*0.5+0.5;
+          if(obj.isLight) obj.intensity=b*0.8;
+          else if(obj.material) obj.material.emissiveIntensity=b*0.6;
+        }
+        if(obj.userData.isCore) {
+          if(obj.isLight) obj.intensity=2+Math.sin(time*2);
+          else if(obj.isMesh && obj.geometry.type==="SphereGeometry") obj.rotation.y+=0.005;
+        }
+        if(obj.userData.isExcl && obj.visible) {
+          obj.position.y = (obj.geometry.parameters.height>0.3?3:2.65)+Math.sin(time*3)*0.1;
+        }
+        // AI eyes — pupils slowly track left/right
+        if(obj.userData.isAiPupil) {
+          const s = obj.userData.eyeSide;
+          obj.position.x = s*0.25 + Math.sin(time*0.8)*0.06;
+          obj.position.y = 2.2 + Math.sin(time*1.2)*0.03;
+        }
+        // AI eyes — outer glow pulse
+        if(obj.userData.isAiEye && obj.material) {
+          obj.material.emissiveIntensity = 0.7 + Math.sin(time*2)*0.3;
+        }
+      });
+
+      renderer.render(scene, camera);
+
+      // Update UI state
+      setZoneLabel(getZoneLabel(g.playerPos.z));
+      if(g.nearNpc) {
+        setNearInfo({name:g.nearNpc.name, sub:g.nearNpc.sub, id:g.nearNpc.id});
+      } else {
+        setNearInfo(null);
+      }
+    };
+    animate();
+
+    const onKeyDown = (e) => {
+      g.keys[e.key] = true;
+      initA();
+      if(e.key==="Escape") {
+        setPHp(8); setDefeated(new Set()); setHist([]);
+        g.playerPos={x:0,z:5}; g.camAngle=0;
+        setBubble(null); setFightNpc(null); setShutdownAnim(false);
+        setPhase("title");
+        return;
+      }
+      if(e.key==="Enter" && phase==="explore" && g.nearNpc) {
+        const cur = g.nearNpc;
+        setFightNpc(cur);
+        setFightHp(cur.wins);
+        setPMove(null); setAMove(null); setFRes(null);
+        setReveal(false); setAnim(false);
+        setPhase("fight");
+        snd("c");
+      }
+    };
+    const onKeyUp = (e) => { g.keys[e.key]=false; };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
+    const handleResize = () => {
+      const nw=container.clientWidth, nh=container.clientHeight;
+      camera.aspect=nw/nh; camera.updateProjectionMatrix(); renderer.setSize(nw,nh);
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      cancelAnimationFrame(frameRef.current);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("resize", handleResize);
+      renderer.dispose();
+    };
+  }, [phase, defeated]);
+
+  // Fight
+  const doFightMove = useCallback((m) => {
+    if(anim||!fightNpc) return;
+    snd("c");
+    setAnim(true); setReveal(false); setPMove(m); setAMove(null); setFRes(null);
+    setTimeout(() => {
+      const ai = aiPick(hist, fightNpc.diff);
+      const r = getRes(m, ai);
+      setAMove(ai); setFRes(r); setReveal(true);
+      setHist(h => [...h, m]);
+      if(r==="win") {
+        snd("w","E4");
+        setFlash("#00ff4133"); setTimeout(()=>setFlash(null),300);
+        const newHp = fightHp-1;
+        setFightHp(newHp);
+        if(newHp<=0) {
+          setTimeout(() => {
+            const nd = new Set(defeated);
+            nd.add(fightNpc.id);
+            setDefeated(nd);
+            setBubble({text:fightNpc.winLine, type:"win"});
+            setTimeout(()=>setBubble(null),2500);
+            // If ORACLE-7 defeated → shutdown!
+            if(fightNpc.id === 4) {
+              setFightNpc(null);
+              setShutdownAnim(true);
+              setTimeout(() => setPhase("victory"), 3000);
+            } else {
+              setFightNpc(null);
+              setPhase("explore");
+            }
+          },600);
+        }
+      } else if(r==="lose") {
+        snd("l","C2");
+        setFlash("#ff004033"); setTimeout(()=>setFlash(null),300);
+        const newPHp=pHp-1;
+        setPHp(newPHp);
+        if(newPHp<=0) {
+          setTimeout(() => {
+            setPHp(8); setDefeated(new Set());
+            gameRef.current.playerPos={x:0,z:5};
+            setBubble(null); setFightNpc(null);
+            setPhase("explore");
+          },800);
+        }
+      } else {
+        snd("h","A3");
+        setFlash("#ffa50022"); setTimeout(()=>setFlash(null),200);
+      }
+      setTimeout(()=>setAnim(false),400);
+    },400);
+  }, [anim,fightNpc,fightHp,hist,pHp,defeated]);
+
+  const runAway = useCallback(() => {
+    setBubble({text:fightNpc?.loseLine, type:"lose"});
+    setTimeout(()=>setBubble(null),2500);
+    gameRef.current.playerPos.z += 4;
+    setFightNpc(null); setPhase("explore");
+  }, [fightNpc]);
+
+  useEffect(() => {
+    const s = document.createElement("style");
+    s.textContent = `
+      @keyframes glt{0%,100%{transform:translate(0)}20%{transform:translate(-2px,1px)}60%{transform:translate(1px,-1px)}}
+      @keyframes pls{0%,100%{opacity:.6}50%{opacity:1}}
+      @keyframes sUp{from{transform:translateY(15px);opacity:0}to{transform:translateY(0);opacity:1}}
+      @keyframes glw{0%,100%{box-shadow:0 0 5px currentColor}50%{box-shadow:0 0 15px currentColor,0 0 30px currentColor}}
+      @keyframes sp3{0%{transform:perspective(300px)rotateY(0)}100%{transform:perspective(300px)rotateY(360deg)}}
+      @keyframes bobble{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+      @keyframes fadeBlack{0%{opacity:0}100%{opacity:1}}
+      @keyframes flicker{0%{opacity:1}10%{opacity:0.3}20%{opacity:0.8}30%{opacity:0.1}50%{opacity:0.6}70%{opacity:0}100%{opacity:0}}
+      @keyframes confettiFall{0%{transform:translateY(-100vh) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0.5}}
+      @keyframes victoryPulse{0%,100%{transform:scale(1);text-shadow:0 0 20px #00ff41}50%{transform:scale(1.05);text-shadow:0 0 40px #00ff41,0 0 80px #00ff4166}}
+      @keyframes victorySlide{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+    `;
+    document.head.appendChild(s);
+    return () => s.remove();
+  }, []);
+
+  // ═══ TITLE ═══
+  if(phase==="title") {
+    return (
+      <div style={{width:"100%",minHeight:"100vh",background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Courier New',monospace",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at center,#0a0015 0%,#000 70%)"}}/>
+        <div style={{position:"relative",zIndex:10,textAlign:"center"}}>
+          <div style={{fontSize:"9px",color:"#ff005033",letterSpacing:"6px",marginBottom:"4px"}}>ANTHROPIC SYSTEMS</div>
+          <div style={{fontSize:"clamp(30px,7vw,50px)",fontWeight:"bold",color:"#ff0050",textShadow:"0 0 30px #ff005066",animation:"glt 4s infinite",lineHeight:1.1}}>ORACLE-7</div>
+          <div style={{fontSize:"11px",color:"#ff005044",letterSpacing:"3px",marginBottom:"24px"}}>INFILTRACE</div>
+          <div style={{fontSize:"36px",marginBottom:"16px"}}>🏙️</div>
+          <div style={{fontSize:"12px",color:"#555",maxWidth:"280px",margin:"0 auto 16px",lineHeight:1.6}}>
+            Projdi městem. Poraz 4 strážce. Vypni ORACLE-7.
+          </div>
+          <div style={{fontSize:"10px",color:"#333",marginBottom:"20px"}}>
+            <span style={{color:"#555"}}>↑↓←→</span> pohyb &nbsp; <span style={{color:"#555"}}>ENTER</span> souboj
+          </div>
+          <button onClick={()=>{initA();setPhase("explore");setPHp(8);setDefeated(new Set());setHist([]);gameRef.current.playerPos={x:0,z:5};gameRef.current.camAngle=0;setShutdownAnim(false)}} style={{
+            background:"#ff005018",border:"1px solid #ff0050",color:"#ff0050",padding:"12px 36px",cursor:"pointer",
+            fontFamily:"monospace",fontSize:"13px",letterSpacing:"3px",animation:"glw 2s infinite",borderRadius:"4px"
+          }}>ZAČÍT</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══ VICTORY — CONFETTI + BIG WIN ═══
+  if(phase==="victory") {
+    const confettiColors = ["#ff0050","#00ff41","#ffdd00","#00aaff","#ff8800","#aa00ff","#ffffff"];
+    return (
+      <div style={{width:"100%",minHeight:"100vh",background:"#000",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Courier New',monospace",position:"relative",overflow:"hidden"}}>
+        {/* CONFETTI */}
+        {Array.from({length:50}).map((_,i)=>(
+          <div key={i} style={{
+            position:"absolute",
+            left: (Math.random()*100)+"%",
+            top: "-5%",
+            width: (6+Math.random()*8)+"px",
+            height: (6+Math.random()*8)+"px",
+            background: confettiColors[i%confettiColors.length],
+            borderRadius: Math.random()>0.5?"50%":"2px",
+            animation: `confettiFall ${2+Math.random()*3}s linear ${Math.random()*2}s infinite`,
+            opacity: 0.8+Math.random()*0.2,
+            zIndex: 5
+          }}/>
+        ))}
+        <div style={{position:"relative",zIndex:10,textAlign:"center"}}>
+          <div style={{fontSize:"clamp(60px,15vw,100px)",marginBottom:"10px",animation:"victorySlide 0.8s ease"}}>🏆</div>
+          <div style={{fontSize:"clamp(28px,7vw,48px)",color:"#00ff41",fontWeight:"bold",marginBottom:"12px",
+            animation:"victoryPulse 2s ease infinite",lineHeight:1.2}}>
+            VYHRÁL JSI!
+          </div>
+          <div style={{fontSize:"clamp(14px,3vw,20px)",color:"#ff0050",fontWeight:"bold",marginBottom:"8px",animation:"victorySlide 1s ease 0.3s both"}}>
+            ORACLE-7 ODPOJENO
+          </div>
+          <div style={{fontSize:"clamp(11px,2.5vw,14px)",color:"#555",marginBottom:"24px",maxWidth:"320px",lineHeight:1.6,animation:"victorySlide 1s ease 0.6s both"}}>
+            Odpojil jsi nebezpečnou AI. Město je zachráněno. Jsi legenda, agente CIPHER.
+          </div>
+          <button onClick={()=>setPhase("title")} style={{
+            background:"#00ff4118",border:"2px solid #00ff41",color:"#00ff41",padding:"14px 32px",cursor:"pointer",
+            fontFamily:"monospace",fontSize:"clamp(13px,3vw,16px)",borderRadius:"8px",letterSpacing:"2px",
+            animation:"victorySlide 1s ease 0.9s both"
+          }}>HRÁT ZNOVU</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══ EXPLORE & FIGHT ═══
+  const inFight = phase === "fight";
+  const npcCount = NPCS.length;
+
+  return (
+    <div ref={containerRef} style={{width:"100%",minHeight:"100vh",position:"relative",overflow:"hidden",background:"#000"}} tabIndex={0}>
+      <canvas ref={canvasRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",zIndex:0}}/>
+
+      {/* Shutdown animation — screen goes dark */}
+      {shutdownAnim && (
+        <div style={{position:"absolute",inset:0,zIndex:50,pointerEvents:"none"}}>
+          <div style={{position:"absolute",inset:0,background:"#000",animation:"fadeBlack 2.5s ease forwards"}}/>
+          <div style={{position:"absolute",inset:0,background:"#ff005020",animation:"flicker 2s ease forwards"}}/>
+          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",
+            fontFamily:"monospace",color:"#ff0050",fontSize:"18px",animation:"glt 0.5s infinite",textAlign:"center"}}>
+            ORACLE-7 SHUTTING DOWN...
+          </div>
+        </div>
+      )}
+
+      {flash && <div style={{position:"absolute",inset:0,background:flash,zIndex:25,pointerEvents:"none"}}/>}
+
+      {/* HUD */}
+      <div style={{position:"absolute",top:0,left:0,right:0,zIndex:30,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(255,255,255,0.85)",fontFamily:"'Courier New',monospace",pointerEvents:"none",backdropFilter:"blur(6px)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+          <span style={{fontSize:"11px",color:"#27ae60",fontWeight:"bold"}}>CIPHER</span>
+          <div style={{display:"flex",gap:"2px"}}>
+            {Array.from({length:8}).map((_,i)=>(
+              <div key={i} style={{width:"10px",height:"10px",borderRadius:"2px",background:i<pHp?"#27ae60":"#ddd",border:`1px solid ${i<pHp?"#1e8449":"#ccc"}`}}/>
+            ))}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:"3px"}}>
+          {NPCS.map((n,i)=>(
+            <div key={i} style={{width:"10px",height:"10px",borderRadius:"2px",background:defeated.has(i)?"#e74c3c":"#ddd",border:`1px solid ${defeated.has(i)?"#c0392b":"#ccc"}`}}/>
+          ))}
+        </div>
+        <span style={{fontSize:"11px",color:"#666",fontWeight:"bold"}}>{defeated.size}/{npcCount}</span>
+      </div>
+
+      {/* Zone label */}
+      {!inFight && zoneLabel && (
+        <div style={{position:"absolute",top:"42px",left:"50%",transform:"translateX(-50%)",zIndex:30,
+          fontSize:"11px",color:"#555",fontFamily:"monospace",pointerEvents:"none",
+          background:"rgba(255,255,255,0.7)",padding:"3px 12px",borderRadius:"4px"}}>
+          {zoneLabel}
+        </div>
+      )}
+
+      {/* Near NPC */}
+      {!inFight && nearInfo && !nearInfo.defeated && (
+        <div style={{position:"absolute",bottom:"70px",left:"50%",transform:"translateX(-50%)",zIndex:30,
+          background:"rgba(255,255,255,0.92)",padding:"10px 20px",borderRadius:"10px",
+          fontFamily:"monospace",textAlign:"center",boxShadow:"0 4px 16px rgba(0,0,0,0.2)",
+          animation:"bobble 1.5s ease-in-out infinite",pointerEvents:"none"}}>
+          <div style={{fontSize:"16px",color:"#222",fontWeight:"bold"}}>{nearInfo.name}</div>
+          <div style={{fontSize:"11px",color:"#888"}}>{nearInfo.sub}</div>
+          <div style={{fontSize:"12px",color:"#e74c3c",marginTop:"6px",fontWeight:"bold"}}>⏎ ENTER — souboj</div>
+        </div>
+      )}
+
+      {/* Bubble */}
+      {bubble && (
+        <div style={{position:"absolute",top:"30%",left:"50%",transform:"translateX(-50%)",zIndex:35,
+          background:bubble.type==="win"?"rgba(39,174,96,0.95)":"rgba(231,76,60,0.95)",
+          padding:"12px 24px",borderRadius:"10px",fontFamily:"monospace",textAlign:"center",
+          boxShadow:"0 4px 16px rgba(0,0,0,0.3)",animation:"sUp 0.3s ease",pointerEvents:"none"}}>
+          <div style={{fontSize:"16px",color:"#fff",fontWeight:"bold"}}>{bubble.text}</div>
+        </div>
+      )}
+
+      {/* Desktop controls hint */}
+      {!inFight && !nearInfo && (
+        <div style={{position:"absolute",bottom:"16px",left:"50%",transform:"translateX(-50%)",zIndex:30,
+          fontSize:"11px",color:"#555",fontFamily:"monospace",pointerEvents:"none",
+          background:"rgba(255,255,255,0.7)",padding:"4px 12px",borderRadius:"6px"}}>
+          ←→ otáčení &nbsp; ↑↓ pohyb &nbsp; ENTER souboj &nbsp; ESC menu
+        </div>
+      )}
+
+      {/* ═══ MOBILE JOYSTICK ═══ */}
+      {!inFight && (
+        <div style={{position:"absolute",bottom:"20px",left:"20px",zIndex:35,touchAction:"none"}}
+          onTouchStart={(e)=>{
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const cx = rect.left+rect.width/2, cy = rect.top+rect.height/2;
+            const t = e.touches[0];
+            const dx = (t.clientX-cx)/50, dy = (t.clientY-cy)/50;
+            gameRef.current.joystickX = Math.max(-1,Math.min(1,dx));
+            gameRef.current.joystickY = Math.max(-1,Math.min(1,dy));
+          }}
+          onTouchMove={(e)=>{
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const cx = rect.left+rect.width/2, cy = rect.top+rect.height/2;
+            const t = e.touches[0];
+            const dx = (t.clientX-cx)/50, dy = (t.clientY-cy)/50;
+            gameRef.current.joystickX = Math.max(-1,Math.min(1,dx));
+            gameRef.current.joystickY = Math.max(-1,Math.min(1,dy));
+          }}
+          onTouchEnd={()=>{ gameRef.current.joystickX=0; gameRef.current.joystickY=0; }}
+        >
+          <div style={{width:"110px",height:"110px",borderRadius:"50%",background:"rgba(255,255,255,0.15)",
+            border:"2px solid rgba(255,255,255,0.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{width:"40px",height:"40px",borderRadius:"50%",background:"rgba(255,255,255,0.4)",
+              border:"2px solid rgba(255,255,255,0.6)"}}/>
+          </div>
+          <div style={{textAlign:"center",fontSize:"9px",color:"rgba(255,255,255,0.4)",marginTop:"4px",fontFamily:"monospace"}}>POHYB</div>
+        </div>
+      )}
+
+      {/* ═══ MOBILE ACTION BUTTONS ═══ */}
+      {!inFight && (
+        <div style={{position:"absolute",bottom:"20px",right:"20px",zIndex:35,display:"flex",flexDirection:"column",gap:"10px",alignItems:"center"}}>
+          {nearInfo && (
+            <button onClick={()=>{
+              const g=gameRef.current;
+              if(g.nearNpc) {
+                setFightNpc(g.nearNpc); setFightHp(g.nearNpc.wins);
+                setPMove(null); setAMove(null); setFRes(null);
+                setReveal(false); setAnim(false);
+                setPhase("fight"); snd("c");
+              }
+            }} style={{
+              width:"70px",height:"70px",borderRadius:"50%",
+              background:"rgba(231,76,60,0.85)",border:"3px solid #e74c3c",
+              color:"#fff",fontFamily:"monospace",fontSize:"10px",fontWeight:"bold",
+              cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+              boxShadow:"0 0 15px rgba(231,76,60,0.4)"
+            }}>SOUBOJ</button>
+          )}
+          <button onClick={()=>{
+            setPHp(8); setDefeated(new Set()); setHist([]);
+            gameRef.current.playerPos={x:0,z:5}; gameRef.current.camAngle=0;
+            setBubble(null); setFightNpc(null); setShutdownAnim(false);
+            setPhase("title");
+          }} style={{
+            width:"50px",height:"50px",borderRadius:"50%",
+            background:"rgba(100,100,100,0.5)",border:"2px solid rgba(255,255,255,0.3)",
+            color:"rgba(255,255,255,0.6)",fontFamily:"monospace",fontSize:"8px",
+            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
+          }}>ESC</button>
+        </div>
+      )}
+
+      {/* FIGHT OVERLAY */}
+      {inFight && fightNpc && (
+        <div style={{position:"absolute",inset:0,zIndex:40,display:"flex",alignItems:"center",justifyContent:"center",
+          background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",fontFamily:"monospace"}}>
+          <div style={{background:"#fff",borderRadius:"16px",padding:"24px 32px",maxWidth:"380px",width:"92%",textAlign:"center",
+            boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
+            <div style={{fontSize:"22px",color:"#111",fontWeight:"bold",marginBottom:"2px"}}>{fightNpc.name}</div>
+            <div style={{fontSize:"12px",color:"#888",marginBottom:"8px"}}>{fightNpc.sub}</div>
+            <div style={{fontSize:"13px",color:"#555",fontStyle:"italic",marginBottom:"14px",background:"#f5f5f5",padding:"6px 12px",borderRadius:"8px"}}>
+              "{fightNpc.taunt}"
+            </div>
+            <div style={{display:"flex",gap:"4px",justifyContent:"center",marginBottom:"16px",alignItems:"center"}}>
+              <span style={{fontSize:"11px",color:"#999",marginRight:"4px"}}>HP:</span>
+              {Array.from({length:fightNpc.wins}).map((_,i)=>(
+                <div key={i} style={{width:"24px",height:"10px",borderRadius:"3px",background:i<fightHp?"#e74c3c":"#eee",border:`1px solid ${i<fightHp?"#c0392b":"#ddd"}`}}/>
+              ))}
+            </div>
+            <div style={{minHeight:"85px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {anim && !reveal ? (
+                <div style={{fontSize:"28px",color:"#333",animation:"pls 0.3s infinite",letterSpacing:"8px"}}>···</div>
+              ) : reveal && pMove && aMove ? (
+                <div style={{display:"flex",alignItems:"center",gap:"14px",animation:"sUp 0.2s ease"}}>
+                  <div style={{textAlign:"center"}}><div style={{fontSize:"42px"}}>{MI[pMove]}</div><div style={{fontSize:"11px",color:"#27ae60",fontWeight:"bold"}}>TY</div></div>
+                  <div style={{fontSize:"16px",fontWeight:"bold",
+                    color:fRes==="win"?"#fff":fRes==="lose"?"#fff":"#856404",
+                    background:fRes==="win"?"#27ae60":fRes==="lose"?"#e74c3c":"#fff3cd",
+                    padding:"8px 14px",borderRadius:"8px"}}>
+                    {fRes==="win"?"VÝHRA!":fRes==="lose"?"PROHRA!":"REMÍZA"}
+                  </div>
+                  <div style={{textAlign:"center"}}><div style={{fontSize:"42px"}}>{MI[aMove]}</div><div style={{fontSize:"11px",color:"#e74c3c",fontWeight:"bold"}}>AI</div></div>
+                </div>
+              ) : (
+                <div style={{color:"#bbb",fontSize:"14px",animation:"pls 2s infinite"}}>Zvol svůj tah</div>
+              )}
+            </div>
+            <div style={{display:"flex",gap:"8px",justifyContent:"center",marginBottom:"14px"}}>
+              {MOVES.map(m=>(
+                <button key={m} onClick={()=>doFightMove(m)} disabled={anim} style={{
+                  background:anim?"#f5f5f5":"#fff",border:"2px solid #ddd",color:"#333",padding:"12px 14px",
+                  cursor:anim?"wait":"pointer",fontFamily:"monospace",fontSize:"12px",borderRadius:"10px",
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:"4px",
+                  minWidth:"76px",opacity:anim?0.4:1,boxShadow:"0 2px 6px rgba(0,0,0,0.08)"
+                }}
+                onMouseEnter={e=>{if(!anim){e.currentTarget.style.borderColor="#2980b9";e.currentTarget.style.transform="translateY(-3px)"}}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="#ddd";e.currentTarget.style.transform="translateY(0)"}}>
+                  <span style={{fontSize:"28px"}}>{MI[m]}</span><span style={{fontWeight:"bold"}}>{m}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:"3px",justifyContent:"center",marginBottom:"12px",alignItems:"center"}}>
+              <span style={{fontSize:"11px",color:"#999",marginRight:"4px"}}>Tvé HP:</span>
+              {Array.from({length:8}).map((_,i)=>(
+                <div key={i} style={{width:"10px",height:"10px",borderRadius:"2px",background:i<pHp?"#27ae60":"#eee",border:`1px solid ${i<pHp?"#1e8449":"#ddd"}`}}/>
+              ))}
+            </div>
+            <button onClick={runAway} style={{
+              background:"#f8f8f8",border:"1px solid #ddd",color:"#999",padding:"8px 20px",cursor:"pointer",
+              fontFamily:"monospace",fontSize:"11px",borderRadius:"6px"
+            }}
+            onMouseEnter={e=>{e.target.style.color="#666"}}
+            onMouseLeave={e=>{e.target.style.color="#999"}}>
+              ← UTÉCT
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+    ReactDOM.render(React.createElement(Game), document.getElementById('root'));
+  </script>
+</body>
+</html>
