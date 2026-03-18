@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ORACLE-7 — Vypni AI</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #root { width: 100%; height: 100%; overflow: hidden; touch-action: none; }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body, #root { width: 100%; height: 100%; overflow: hidden; touch-action: none; -webkit-touch-callout: none; }
+    button { -webkit-tap-highlight-color: transparent; outline: none; }
   </style>
 </head>
 <body>
@@ -974,8 +975,9 @@ function Game() {
           <div style={{fontSize:"12px",color:"#555",maxWidth:"280px",margin:"0 auto 16px",lineHeight:1.6}}>
             Projdi městem. Poraz 4 strážce. Vypni ORACLE-7.
           </div>
-          <div style={{fontSize:"10px",color:"#333",marginBottom:"20px"}}>
-            <span style={{color:"#555"}}>↑↓←→</span> pohyb &nbsp; <span style={{color:"#555"}}>ENTER</span> souboj
+          <div style={{fontSize:"10px",color:"#333",marginBottom:"20px",lineHeight:1.8}}>
+            <div><span style={{color:"#555"}}>↑↓←→</span> pohyb &nbsp; <span style={{color:"#555"}}>ENTER</span> souboj</div>
+            <div style={{color:"#444"}}>Mobil: tlačítka na obrazovce</div>
           </div>
           <button onClick={()=>{initA();setPhase("explore");setPHp(8);setDefeated(new Set());setHist([]);gameRef.current.playerPos={x:0,z:5};gameRef.current.camAngle=0;setShutdownAnim(false)}} style={{
             background:"#ff005018",border:"1px solid #ff0050",color:"#ff0050",padding:"12px 36px",cursor:"pointer",
@@ -1099,39 +1101,100 @@ function Game() {
         </div>
       )}
 
-      {/* Desktop controls hint */}
-      {!inFight && !nearInfo && (
-        <div style={{position:"absolute",bottom:"16px",left:"50%",transform:"translateX(-50%)",zIndex:30,
-          fontSize:"11px",color:"#555",fontFamily:"monospace",pointerEvents:"none",
-          background:"rgba(255,255,255,0.7)",padding:"4px 12px",borderRadius:"6px"}}>
-          ←→ otáčení &nbsp; ↑↓ pohyb &nbsp; ENTER souboj &nbsp; ESC menu
+      {/* ═══ VISIBLE MOBILE D-PAD (left side) ═══ */}
+      {!inFight && (
+        <div style={{position:"absolute",bottom:"15px",left:"15px",zIndex:60,userSelect:"none",WebkitUserSelect:"none",touchAction:"none"}}>
+          {/* UP */}
+          <button
+            onTouchStart={(e)=>{e.preventDefault();e.stopPropagation();initA();gameRef.current.keys["ArrowUp"]=true}}
+            onTouchEnd={(e)=>{e.preventDefault();gameRef.current.keys["ArrowUp"]=false}}
+            onMouseDown={()=>{initA();gameRef.current.keys["ArrowUp"]=true}}
+            onMouseUp={()=>{gameRef.current.keys["ArrowUp"]=false}}
+            onMouseLeave={()=>{gameRef.current.keys["ArrowUp"]=false}}
+            style={{position:"absolute",left:"26px",top:"0px",width:"48px",height:"48px",borderRadius:"10px",
+              background:"rgba(255,255,255,0.25)",border:"2px solid rgba(255,255,255,0.5)",
+              color:"#fff",fontSize:"20px",display:"flex",alignItems:"center",justifyContent:"center",
+              cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"
+            }}>▲</button>
+          {/* DOWN */}
+          <button
+            onTouchStart={(e)=>{e.preventDefault();e.stopPropagation();gameRef.current.keys["ArrowDown"]=true}}
+            onTouchEnd={(e)=>{e.preventDefault();gameRef.current.keys["ArrowDown"]=false}}
+            onMouseDown={()=>{gameRef.current.keys["ArrowDown"]=true}}
+            onMouseUp={()=>{gameRef.current.keys["ArrowDown"]=false}}
+            onMouseLeave={()=>{gameRef.current.keys["ArrowDown"]=false}}
+            style={{position:"absolute",left:"26px",top:"100px",width:"48px",height:"48px",borderRadius:"10px",
+              background:"rgba(255,255,255,0.25)",border:"2px solid rgba(255,255,255,0.5)",
+              color:"#fff",fontSize:"20px",display:"flex",alignItems:"center",justifyContent:"center",
+              cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"
+            }}>▼</button>
+          {/* LEFT */}
+          <button
+            onTouchStart={(e)=>{e.preventDefault();e.stopPropagation();gameRef.current.keys["ArrowLeft"]=true}}
+            onTouchEnd={(e)=>{e.preventDefault();gameRef.current.keys["ArrowLeft"]=false}}
+            onMouseDown={()=>{gameRef.current.keys["ArrowLeft"]=true}}
+            onMouseUp={()=>{gameRef.current.keys["ArrowLeft"]=false}}
+            onMouseLeave={()=>{gameRef.current.keys["ArrowLeft"]=false}}
+            style={{position:"absolute",left:"0px",top:"50px",width:"48px",height:"48px",borderRadius:"10px",
+              background:"rgba(255,255,255,0.25)",border:"2px solid rgba(255,255,255,0.5)",
+              color:"#fff",fontSize:"20px",display:"flex",alignItems:"center",justifyContent:"center",
+              cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"
+            }}>◀</button>
+          {/* RIGHT */}
+          <button
+            onTouchStart={(e)=>{e.preventDefault();e.stopPropagation();gameRef.current.keys["ArrowRight"]=true}}
+            onTouchEnd={(e)=>{e.preventDefault();gameRef.current.keys["ArrowRight"]=false}}
+            onMouseDown={()=>{gameRef.current.keys["ArrowRight"]=true}}
+            onMouseUp={()=>{gameRef.current.keys["ArrowRight"]=false}}
+            onMouseLeave={()=>{gameRef.current.keys["ArrowRight"]=false}}
+            style={{position:"absolute",left:"52px",top:"50px",width:"48px",height:"48px",borderRadius:"10px",
+              background:"rgba(255,255,255,0.25)",border:"2px solid rgba(255,255,255,0.5)",
+              color:"#fff",fontSize:"20px",display:"flex",alignItems:"center",justifyContent:"center",
+              cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"
+            }}>▶</button>
         </div>
       )}
 
-      {/* ═══ MOBILE TOUCH HINTS ═══ */}
+      {/* ═══ RIGHT SIDE: FIGHT + ESC buttons ═══ */}
       {!inFight && (
-        <div style={{position:"absolute",bottom:"12px",left:"12px",zIndex:35,pointerEvents:"none"}}>
-          <div style={{fontSize:"10px",color:"rgba(255,255,255,0.5)",fontFamily:"monospace",lineHeight:1.6}}>
-            <div>👆 Levá strana = pohyb</div>
-            <div>👆 Pravá strana = souboj</div>
-          </div>
+        <div style={{position:"absolute",bottom:"15px",right:"15px",zIndex:60,display:"flex",flexDirection:"column",gap:"10px",alignItems:"center",userSelect:"none",WebkitUserSelect:"none"}}>
+          {nearInfo && (
+            <button
+              onTouchStart={(e)=>{
+                e.preventDefault();e.stopPropagation();initA();
+                const g=gameRef.current;
+                if(g.nearNpc){setFightNpc(g.nearNpc);setFightHp(g.nearNpc.wins);setPMove(null);setAMove(null);setFRes(null);setReveal(false);setAnim(false);setPhase("fight");snd("c")}
+              }}
+              onClick={()=>{
+                initA();const g=gameRef.current;
+                if(g.nearNpc){setFightNpc(g.nearNpc);setFightHp(g.nearNpc.wins);setPMove(null);setAMove(null);setFRes(null);setReveal(false);setAnim(false);setPhase("fight");snd("c")}
+              }}
+              style={{width:"80px",height:"80px",borderRadius:"50%",
+                background:"rgba(231,76,60,0.8)",border:"3px solid #e74c3c",
+                color:"#fff",fontFamily:"monospace",fontSize:"11px",fontWeight:"bold",
+                cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                boxShadow:"0 0 20px rgba(231,76,60,0.5)",touchAction:"none",WebkitTapHighlightColor:"transparent"
+              }}>⚔️ BOJ</button>
+          )}
+          <button
+            onTouchStart={(e)=>{
+              e.preventDefault();e.stopPropagation();
+              setPHp(8);setDefeated(new Set());setHist([]);
+              gameRef.current.playerPos={x:0,z:5};gameRef.current.camAngle=0;
+              setBubble(null);setFightNpc(null);setShutdownAnim(false);setPhase("title");
+            }}
+            onClick={()=>{
+              setPHp(8);setDefeated(new Set());setHist([]);
+              gameRef.current.playerPos={x:0,z:5};gameRef.current.camAngle=0;
+              setBubble(null);setFightNpc(null);setShutdownAnim(false);setPhase("title");
+            }}
+            style={{width:"48px",height:"48px",borderRadius:"50%",
+              background:"rgba(100,100,100,0.5)",border:"2px solid rgba(255,255,255,0.4)",
+              color:"rgba(255,255,255,0.7)",fontFamily:"monospace",fontSize:"9px",fontWeight:"bold",
+              cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+              touchAction:"none",WebkitTapHighlightColor:"transparent"
+            }}>ESC</button>
         </div>
-      )}
-
-      {/* ═══ MOBILE ESC BUTTON ═══ */}
-      {!inFight && (
-        <button onClick={()=>{
-          setPHp(8); setDefeated(new Set()); setHist([]);
-          gameRef.current.playerPos={x:0,z:5}; gameRef.current.camAngle=0;
-          setBubble(null); setFightNpc(null); setShutdownAnim(false);
-          setPhase("title");
-        }} style={{
-          position:"absolute",bottom:"12px",right:"12px",zIndex:35,
-          width:"44px",height:"44px",borderRadius:"50%",
-          background:"rgba(100,100,100,0.5)",border:"2px solid rgba(255,255,255,0.3)",
-          color:"rgba(255,255,255,0.6)",fontFamily:"monospace",fontSize:"9px",
-          cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
-        }}>ESC</button>
       )}
 
       {/* FIGHT OVERLAY */}
