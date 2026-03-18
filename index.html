@@ -987,39 +987,39 @@ function Game() {
         </div>
       )}
 
-      {/* ═══ MOBILE D-PAD — visible buttons ═══ */}
+      {/* ═══ MOBILE D-PAD — centered bottom ═══ */}
       {!inFight && (
-        <div style={{position:"absolute",bottom:"70px",left:"10px",zIndex:60,
-          userSelect:"none",WebkitUserSelect:"none",touchAction:"none"}}>
+        <div style={{position:"absolute",bottom:"50%",left:"10px",transform:"translateY(50%)",zIndex:60,
+          userSelect:"none",WebkitUserSelect:"none",touchAction:"none",width:"108px",height:"160px"}}>
           <button onTouchStart={e=>{e.preventDefault();initA();gameRef.current.keys.ArrowUp=true}}
             onTouchEnd={e=>{e.preventDefault();gameRef.current.keys.ArrowUp=false}}
             onMouseDown={()=>{initA();gameRef.current.keys.ArrowUp=true}} onMouseUp={()=>{gameRef.current.keys.ArrowUp=false}} onMouseLeave={()=>{gameRef.current.keys.ArrowUp=false}}
-            style={{position:"absolute",left:28,top:0,width:52,height:52,borderRadius:12,background:"rgba(255,255,255,0.3)",border:"3px solid rgba(255,255,255,0.6)",color:"#fff",fontSize:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"}}>▲</button>
+            style={{position:"absolute",left:28,top:0,width:52,height:52,borderRadius:12,background:"rgba(255,255,255,0.35)",border:"3px solid rgba(255,255,255,0.7)",color:"#fff",fontSize:24,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"}}>▲</button>
           <button onTouchStart={e=>{e.preventDefault();gameRef.current.keys.ArrowDown=true}}
             onTouchEnd={e=>{e.preventDefault();gameRef.current.keys.ArrowDown=false}}
             onMouseDown={()=>{gameRef.current.keys.ArrowDown=true}} onMouseUp={()=>{gameRef.current.keys.ArrowDown=false}} onMouseLeave={()=>{gameRef.current.keys.ArrowDown=false}}
-            style={{position:"absolute",left:28,top:108,width:52,height:52,borderRadius:12,background:"rgba(255,255,255,0.3)",border:"3px solid rgba(255,255,255,0.6)",color:"#fff",fontSize:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"}}>▼</button>
+            style={{position:"absolute",left:28,top:108,width:52,height:52,borderRadius:12,background:"rgba(255,255,255,0.35)",border:"3px solid rgba(255,255,255,0.7)",color:"#fff",fontSize:24,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"}}>▼</button>
           <button onTouchStart={e=>{e.preventDefault();gameRef.current.keys.ArrowLeft=true}}
             onTouchEnd={e=>{e.preventDefault();gameRef.current.keys.ArrowLeft=false}}
             onMouseDown={()=>{gameRef.current.keys.ArrowLeft=true}} onMouseUp={()=>{gameRef.current.keys.ArrowLeft=false}} onMouseLeave={()=>{gameRef.current.keys.ArrowLeft=false}}
-            style={{position:"absolute",left:0,top:54,width:52,height:52,borderRadius:12,background:"rgba(255,255,255,0.3)",border:"3px solid rgba(255,255,255,0.6)",color:"#fff",fontSize:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"}}>◀</button>
+            style={{position:"absolute",left:0,top:54,width:52,height:52,borderRadius:12,background:"rgba(255,255,255,0.35)",border:"3px solid rgba(255,255,255,0.7)",color:"#fff",fontSize:24,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"}}>◀</button>
           <button onTouchStart={e=>{e.preventDefault();gameRef.current.keys.ArrowRight=true}}
             onTouchEnd={e=>{e.preventDefault();gameRef.current.keys.ArrowRight=false}}
             onMouseDown={()=>{gameRef.current.keys.ArrowRight=true}} onMouseUp={()=>{gameRef.current.keys.ArrowRight=false}} onMouseLeave={()=>{gameRef.current.keys.ArrowRight=false}}
-            style={{position:"absolute",left:56,top:54,width:52,height:52,borderRadius:12,background:"rgba(255,255,255,0.3)",border:"3px solid rgba(255,255,255,0.6)",color:"#fff",fontSize:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"}}>▶</button>
+            style={{position:"absolute",left:56,top:54,width:52,height:52,borderRadius:12,background:"rgba(255,255,255,0.35)",border:"3px solid rgba(255,255,255,0.7)",color:"#fff",fontSize:24,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",touchAction:"none",WebkitTapHighlightColor:"transparent"}}>▶</button>
         </div>
       )}
 
-      {/* ═══ FIGHT + ESC buttons (right side) ═══ */}
+      {/* ═══ FIGHT + MENU buttons — right center ═══ */}
       {!inFight && (
-        <div style={{position:"absolute",bottom:"70px",right:"10px",zIndex:60,display:"flex",flexDirection:"column",gap:12,alignItems:"center",
+        <div style={{position:"absolute",bottom:"50%",right:"10px",transform:"translateY(50%)",zIndex:60,display:"flex",flexDirection:"column",gap:14,alignItems:"center",
           userSelect:"none",WebkitUserSelect:"none"}}>
           {nearInfo && (
             <button
               onTouchStart={e=>{e.preventDefault();initA();const g=gameRef.current;if(g.nearNpc){setFightNpc(g.nearNpc);setFightHp(g.nearNpc.wins);setPMove(null);setAMove(null);setFRes(null);setReveal(false);setAnim(false);setPhase("fight");snd("c")}}}
               onClick={()=>{initA();const g=gameRef.current;if(g.nearNpc){setFightNpc(g.nearNpc);setFightHp(g.nearNpc.wins);setPMove(null);setAMove(null);setFRes(null);setReveal(false);setAnim(false);setPhase("fight");snd("c")}}}
               style={{width:80,height:80,borderRadius:"50%",background:"rgba(231,76,60,0.85)",border:"3px solid #e74c3c",
-                color:"#fff",fontFamily:"monospace",fontSize:12,fontWeight:"bold",cursor:"pointer",
+                color:"#fff",fontFamily:"monospace",fontSize:13,fontWeight:"bold",cursor:"pointer",
                 display:"flex",alignItems:"center",justifyContent:"center",
                 boxShadow:"0 0 20px rgba(231,76,60,0.5)",touchAction:"none",WebkitTapHighlightColor:"transparent"
               }}>⚔️ BOJ</button>
@@ -1027,8 +1027,8 @@ function Game() {
           <button
             onTouchStart={e=>{e.preventDefault();setPHp(8);setDefeated(new Set());setHist([]);gameRef.current.playerPos={x:0,z:5};gameRef.current.camAngle=0;setBubble(null);setFightNpc(null);setShutdownAnim(false);setPhase("title")}}
             onClick={()=>{setPHp(8);setDefeated(new Set());setHist([]);gameRef.current.playerPos={x:0,z:5};gameRef.current.camAngle=0;setBubble(null);setFightNpc(null);setShutdownAnim(false);setPhase("title")}}
-            style={{width:48,height:48,borderRadius:"50%",background:"rgba(100,100,100,0.6)",border:"2px solid rgba(255,255,255,0.4)",
-              color:"rgba(255,255,255,0.8)",fontFamily:"monospace",fontSize:10,fontWeight:"bold",cursor:"pointer",
+            style={{width:50,height:50,borderRadius:"50%",background:"rgba(100,100,100,0.6)",border:"2px solid rgba(255,255,255,0.5)",
+              color:"rgba(255,255,255,0.85)",fontFamily:"monospace",fontSize:10,fontWeight:"bold",cursor:"pointer",
               display:"flex",alignItems:"center",justifyContent:"center",touchAction:"none",WebkitTapHighlightColor:"transparent"
             }}>MENU</button>
         </div>
